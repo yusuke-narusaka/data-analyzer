@@ -1,6 +1,6 @@
-## 汎用CSVデータ可視化・分析ダッシュボード (DX-Data-Analyzer)
+## 汎用CSVデータ可視化・分析ダッシュボード
 
-# 🌐 デプロイ・公開情報
+# 🌐 公開情報
 本アプリは Render を利用してホスティングしており、以下のURLから実際に動作を確認いただけます。
 
 デモサイトURL: https://data-analyzer-hx0h.onrender.com
