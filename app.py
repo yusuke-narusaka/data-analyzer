@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text
 import pandas as pd
 import json
 
@@ -21,7 +22,7 @@ with app.app_context():
 
 @app.route('/')
 def index():
-    # 全データを取得してリスト形式に変換
+    # 全データを取得
     records = CSVData.query.all()
     data_list = [record.content for record in records]
     
@@ -41,25 +42,25 @@ def import_csv():
 
     if file:
         try:
-            # 【修正ポイント】既存のデータをすべて削除してリセットする
-            db.session.query(CSVData).delete()
-            db.session.commit()
-
-            # CSV読み込み
+            # CSV読み込みを先に行い、エラーがないか確認
             df = pd.read_csv(file)
+            # NaNをNoneに変換
+            df = df.where(pd.notnull(df), None)
+
+            # 既存データの削除（より確実なSQL直接実行方式）
+            db.session.execute(text("DELETE FROM csv_data"))
             
-            # 各行をJSON形式でデータベースに保存
+            # 各行を保存
             for _, row in df.iterrows():
-                # NaN（欠損値）をNoneに変換してJSONエラーを回避
-                row_dict = row.where(pd.notnull(df), None).to_dict()
-                new_data = CSVData(content=row_dict)
+                new_data = CSVData(content=row.to_dict())
                 db.session.add(new_data)
             
             db.session.commit()
             return redirect(url_for('index'))
         except Exception as e:
             db.session.rollback()
-            return f"エラーが発生しました: {e}"
+            print(f"Error: {e}")
+            return f"インポート中にエラーが発生しました。ファイル形式を確認してください。"
 
 @app.route('/chart_data')
 def chart_data():
