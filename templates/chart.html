@@ -2,113 +2,120 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>分析レポート - {{ label_name }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>データ分析グラフ - DXデータ管理システム</title>
+    <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/2103/2103633.png" type="image/png">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body { background-color: #f4f7f6; }
-        .chart-container {
-            background: white;
-            border-radius: 15px;
-            padding: 30px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
-        }
-        @media print {
-            .no-print { display: none; }
-        }
-    </style>
 </head>
-<body>
-    <div class="container py-5">
-        <div class="text-center mb-4">
-            <h2 class="fw-bold text-dark">データ分析レポート</h2>
-            <p class="text-muted">集計軸: <span class="badge bg-secondary">{{ label_name }}</span></p>
-        </div>
+<body class="bg-light">
 
-        <div class="row justify-content-center">
-            <div class="col-lg-10">
-                <div class="chart-container">
-                    <canvas id="resultChart"></canvas>
-                    
-                    <div class="mt-4 d-flex justify-content-center gap-3 no-print">
-                        <button id="downloadBtn" class="btn btn-primary shadow-sm">
-                            <i class="bi bi-download"></i> グラフを画像(PNG)で保存
-                        </button>
-                        <button onclick="window.print()" class="btn btn-outline-secondary shadow-sm">
-                            PDF/印刷用
-                        </button>
+<nav class="navbar navbar-dark bg-dark mb-4">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/">DXデータ管理システム</a>
+        <div class="d-flex">
+            <a href="/" class="btn btn-outline-light">データ一覧へ戻る</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">グラフ設定</h5>
+                    <div class="mb-3">
+                        <label class="form-label">集計軸 (X軸)</label>
+                        <select id="labelSelect" class="form-select">
+                            {% for col in columns %}
+                            <option value="{{ col }}">{{ col }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label">数値項目 (Y軸・複数選択可)</label>
+                        <select id="valueSelect" class="form-select" multiple size="5">
+                            {% for col in columns %}
+                            <option value="{{ col }}">{{ col }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">Ctrlを押しながらクリックで複数選択</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">グラフ形式</label>
+                        <select id="typeSelect" class="form-select">
+                            <option value="bar">棒グラフ</option>
+                            <option value="line">折れ線グラフ</option>
+                            <option value="pie">円グラフ</option>
+                            <option value="radar">レーダーチャート</option>
+                        </select>
+                    </div>
+                    <button id="updateChart" class="btn btn-primary w-100">グラフを更新</button>
+                    <button id="downloadChart" class="btn btn-success w-100 mt-2">画像を保存</button>
                 </div>
             </div>
         </div>
-        
-        <div class="text-center mt-5 no-print">
-            <button onclick="window.close()" class="btn btn-link text-decoration-none text-muted">ウィンドウを閉じる</button>
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <canvas id="myChart"></canvas>
+                </div>
+            </div>
         </div>
     </div>
+</div>
 
-    <script>
-        const colors = [
-            'rgba(78, 115, 223, 0.7)', 'rgba(28, 200, 138, 0.7)', 
-            'rgba(54, 185, 204, 0.7)', 'rgba(246, 194, 62, 0.7)',
-            'rgba(231, 74, 59, 0.7)', 'rgba(133, 135, 150, 0.7)'
-        ];
-        const borderColors = [
-            'rgba(78, 115, 223, 1)', 'rgba(28, 200, 138, 1)', 
-            'rgba(54, 185, 204, 1)', 'rgba(246, 194, 62, 1)',
-            'rgba(231, 74, 59, 1)', 'rgba(133, 135, 150, 1)'
-        ];
+<script>
+let myChart = null;
 
-        const rawDatasets = {{ datasets|tojson }};
-        const chartType = '{{ chart_type }}';
-        
-        const chartDatasets = rawDatasets.map((ds, index) => ({
-            label: ds.label,
-            data: ds.data,
-            backgroundColor: chartType === 'pie' ? colors : colors[index % colors.length],
-            borderColor: chartType === 'pie' ? '#fff' : borderColors[index % borderColors.length],
-            borderWidth: 1,
-            fill: chartType === 'radar'
-        }));
+async function updateChart() {
+    const response = await fetch('/chart_data');
+    const data = await response.json();
 
-        const ctx = document.getElementById('resultChart');
-        const myChart = new Chart(ctx, {
-            type: chartType,
-            data: {
-                labels: {{ labels|tojson }},
-                datasets: chartDatasets
-            },
-            options: {
-                responsive: true,
-                animation: {
-                    onComplete: function() {
-                        // アニメーション完了後にボタンを有効化（画像化を安定させるため）
-                        document.getElementById('downloadBtn').disabled = false;
-                    }
-                },
-                plugins: {
-                    legend: { position: 'bottom' }
-                },
-                scales: {
-                    y: { 
-                        display: chartType !== 'pie' && chartType !== 'radar',
-                        beginAtZero: true 
-                    }
-                }
-            }
-        });
+    const labelKey = document.getElementById('labelSelect').value;
+    const valueKeys = Array.from(document.getElementById('valueSelect').selectedOptions).map(opt => opt.value);
+    const chartType = document.getElementById('typeSelect').value;
 
-        // 画像保存ロジック
-        document.getElementById('downloadBtn').addEventListener('click', function() {
-            // CanvasをデータURL(PNG)に変換
-            const imageAddr = ctx.toDataURL('image/png');
-            
-            // 仮想のリンクを作ってダウンロードを発火させる
-            const link = document.createElement('a');
-            link.download = `chart_${new Date().getTime()}.png`;
-            link.href = imageAddr;
-            link.click();
-        });
-    </script>
+    const labels = data.map(item => item[labelKey]);
+    
+    const datasets = valueKeys.map((key, index) => {
+        return {
+            label: key,
+            data: data.map(item => {
+                const val = item[key];
+                return isNaN(val) ? 0 : parseFloat(val);
+            }),
+            backgroundColor: `hsla(${index * 137.5}, 70%, 60%, 0.6)`,
+            borderColor: `hsla(${index * 137.5}, 70%, 50%, 1)`,
+            borderWidth: 1
+        };
+    });
+
+    if (myChart) { myChart.destroy(); }
+
+    const ctx = document.getElementById('myChart').getContext('2d');
+    myChart = new Chart(ctx, {
+        type: chartType,
+        data: { labels: labels, datasets: datasets },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' } }
+        }
+    });
+}
+
+document.getElementById('updateChart').addEventListener('click', updateChart);
+
+document.getElementById('downloadChart').addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.download = 'chart.png';
+    link.href = document.getElementById('myChart').toDataURL();
+    link.click();
+});
+
+// 初回表示
+updateChart();
+</script>
 </body>
 </html>
