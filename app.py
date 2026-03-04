@@ -1,86 +1,71 @@
-import os
-from flask import Flask, render_template, request, redirect, url_for
-from database import db, DynamicData
+from flask import Flask, render_template, request, redirect, url_for, jsonify
+from flask_sqlalchemy import SQLAlchemy
 import pandas as pd
+import json
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///dx_dynamic.db'
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['SECRET_KEY'] = 'dynamic-dx-secret'
 
-db.init_app(app)
+# データベース設定
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///data.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
 
+# モデル定義
+class CSVData(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.JSON, nullable=False)
+
+# データベースの初期化
 with app.app_context():
-    if not os.path.exists('uploads'): os.makedirs('uploads')
     db.create_all()
 
 @app.route('/')
 def index():
-    data_list = DynamicData.query.all()
-    headers = []
-    rows = []
-    if data_list:
-        headers = list(data_list[0].content.keys())
-        rows = [d.content for d in data_list]
-    return render_template('index.html', headers=headers, rows=rows)
-
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    file = request.files.get('file')
-    if file and file.filename.endswith('.csv'):
-        df = pd.read_csv(file)
-        df = df.fillna('')
-        for _, row in df.iterrows():
-            new_data = DynamicData(content=row.to_dict())
-            db.session.add(new_data)
-        db.session.commit()
-    return redirect(url_for('index'))
-
-# --- 強化版：多機能グラフ表示ページ ---
-@app.route('/chart')
-def show_chart():
-    label_col = request.args.get('label_col')
-    value_cols = request.args.getlist('value_cols')
-    chart_type = request.args.get('chart_type', 'bar')
+    # 全データを取得してリスト形式に変換
+    records = CSVData.query.all()
+    data_list = [record.content for record in records]
     
-    data_list = DynamicData.query.all()
-    if not data_list or not label_col or not value_cols:
-        return "データ、集計軸、または数値項目の指定が足りません。"
+    # カラム名を取得（データが存在する場合のみ）
+    columns = data_list[0].keys() if data_list else []
+    
+    return render_template('index.html', data=data_list, columns=columns)
 
-    # 【重要】もし数値項目の中に「集計軸」と同じ名前があれば除外する
-    value_cols = [v for v in value_cols if v != label_col]
+@app.route('/import', methods=['POST'])
+def import_csv():
+    if 'file' not in request.files:
+        return redirect(url_for('index'))
     
-    # もし除外した結果、数値項目が空になったらエラーを防ぐ
-    if not value_cols:
-        return f"エラー：数値項目に「{label_col}」以外を選択してください。"
+    file = request.files['file']
+    if file.filename == '':
+        return redirect(url_for('index'))
 
-    df = pd.DataFrame([d.content for d in data_list])
-    
-    # 数値型に変換
-    for col in value_cols:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-    
-    # 集計処理（ここでエラーが起きていたのを、上の重複排除で回避します）
-    summary = df.groupby(label_col)[value_cols].sum().reset_index()
-    
-    labels = summary[label_col].tolist()
-    datasets = []
-    for col in value_cols:
-        datasets.append({
-            'label': col,
-            'data': summary[col].tolist()
-        })
+    if file:
+        try:
+            # 【修正ポイント】既存のデータをすべて削除してリセットする
+            db.session.query(CSVData).delete()
+            db.session.commit()
 
-    return render_template('chart.html', 
-                           labels=labels, 
-                           datasets=datasets, 
-                           label_name=label_col, 
-                           chart_type=chart_type)
-@app.route('/clear')
-def clear_data():
-    DynamicData.query.delete()
-    db.session.commit()
-    return redirect(url_for('index'))
+            # CSV読み込み
+            df = pd.read_csv(file)
+            
+            # 各行をJSON形式でデータベースに保存
+            for _, row in df.iterrows():
+                # NaN（欠損値）をNoneに変換してJSONエラーを回避
+                row_dict = row.where(pd.notnull(df), None).to_dict()
+                new_data = CSVData(content=row_dict)
+                db.session.add(new_data)
+            
+            db.session.commit()
+            return redirect(url_for('index'))
+        except Exception as e:
+            db.session.rollback()
+            return f"エラーが発生しました: {e}"
+
+@app.route('/chart_data')
+def chart_data():
+    records = CSVData.query.all()
+    data_list = [record.content for record in records]
+    return jsonify(data_list)
 
 if __name__ == '__main__':
     app.run(debug=True)
