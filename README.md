@@ -5,7 +5,7 @@
 
 デモサイトURL: https://data-analyzer-hx0h.onrender.com
 
-test20.csvを使って動作確認が可能です。
+[test20.csv](https://github.com/yusuke-narusaka/data-analyzer/blob/main/test20.csv)を使って動作確認が可能です。
 
 # ⚠️ ご利用時の注意点
 初回起動について: 無料プランのインスタンスを使用しているため、一定時間アクセスがないとサーバーがスリープ状態に入ります。URLをクリックしてから画面が表示されるまで、30秒〜1分ほど時間がかかる場合があります。
